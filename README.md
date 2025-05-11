@@ -112,6 +112,72 @@ source .venv/bin/activate  # Linux/macOS
 uv pip install -r requirements.txt
 ```
 
+## Docker
+
+推荐使用 docker 镜像来启动 mcp server
+
+`docker compose up -d`
+
+启动后配置SSE的服务如下：
+
+```json
+{
+    "mcpServers": {
+        "rsshub": {
+            "url": "http://localhost:8081/sse/",
+            "timeout": 60,
+        },
+    }
+}
+```
+
+### 使用演示 (qwen_agent)
+
+1. 加载模型 http://localhost:8080/v1 : `llama-server --alias "qwen3-32b:q4_k_m" -m Qwen3-32B-Q4_K_M.gguf -ngl 99`
+2. 启动 MCP server http://localhost:8081/sse : `docker compose up -d`
+3. 安装 qwen_agent : `uv pip install "qwen-agent[rag,code_interpreter,gui,mcp]"`
+
+```py
+from qwen_agent.agents import Assistant
+from qwen_agent.utils.output_beautify import typewriter_print
+
+llm_cfg = {
+    "model": "qwen3-32b:q4_k_m", # load model with llama.cpp
+    "model_server": "http://localhost:8080/v1",  # base_url, also known as api_base
+    "api_key": "EMPTY",
+    "generate_cfg": {
+        "temperature": 0.6,
+        "top_p": 0.6,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+    },
+}
+
+tools = [
+    {
+        "mcpServers": {
+            "myserver": {
+                "url": "http://localhost:8081/sse/",
+                "timeout": 60,
+            },
+        }
+    }
+]
+
+system_prompts = """你是个新闻抓取的帮助AI。在收到用户的指令后，你应该：
+- 优先分析给定的内容是否 rsshub 工具可以处理的内容
+- 获取内容后，将信息汇总并组织成一个连贯的总结
+"""
+
+bot = Assistant(llm=llm_cfg, system_message=system_prompts, function_list=tools)
+
+messages = [{"role": "user", "content": "使用 rsshub 工具获取 rsshub://zaobao/realtime/world 的最新内容"}]
+
+response_plain_text = ""
+for response in bot.run(messages=messages):
+    response_plain_text = typewriter_print(response, response_plain_text)
+```
+
 ## 注意事项
 
 - 工具会自动尝试多个 RSSHub 实例，直到成功获取数据
